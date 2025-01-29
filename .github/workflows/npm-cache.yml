@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       runs-on: 
-        default: dmg-arc-ubuntu
+        default: ubuntu-latest
         required: false
         type: string
         description: Use runs-on to define the type of machine to run the job on.
