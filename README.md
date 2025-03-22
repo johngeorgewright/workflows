@@ -38,17 +38,3 @@ jobs:
       # ...
 ```
 
-## Build and push an image to Dockerhub
-
-```yaml
-jobs:
-  dockerhub:
-    name: Dockerhub
-    uses: johngeorgewright/workflows/.github/workflows/push-to-dockerhub.yml@master
-    with:
-      image-name: atom/my-lovely-image
-      image-tag: 12.0.0
-    secrets:
-      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
-      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-```
