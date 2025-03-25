@@ -1,0 +1,16 @@
+name: Remote Test
+
+description: There's very little documention on whether one can reference arbitary actions within another repo. This is here to test that.
+
+author: John Wright
+
+inputs:
+  text:
+    description: Some text you'd like me to print
+    required: true
+
+runs: 
+  using: composite
+  steps:
+    - shell: bash
+      run: echo '${{ inputs.text }}'
