@@ -1,0 +1,29 @@
+name: Test NPM Cache Action
+
+on:
+  pull_request:
+    paths: [.github/actions/npm-cache/**]
+
+env:
+  CACHE_PATH: |
+    test/actions/npm-cache/node_modules
+
+jobs:
+  first-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/npm-cache
+        with:
+          cache_path: ${{ env.CACHE_PATH }}
+
+  second-cache:
+    needs: [first-cache]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/npm-cache
+        with:
+          cache_path: ${{ env.CACHE_PATH }}
