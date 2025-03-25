@@ -2,7 +2,7 @@ name: Test Yarn Cache Action
 
 on:
   pull_request:
-    paths: [.github/actions/yarn-cache]
+    paths: [.github/actions/yarn-cache/**]
 
 env:
   CACHE_PATH: |
