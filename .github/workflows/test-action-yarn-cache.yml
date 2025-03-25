@@ -1,0 +1,31 @@
+name: Test Yarn Cache Action
+
+on:
+  pull_request:
+    paths: [.github/actions/yarn-cache]
+
+env:
+  CACHE_PATH: |
+    ~/.cache
+    test/actions/yarn-cache/.yarn/unplugged
+    test/actions/yarn-cache/.yarn/install-state.gz
+
+jobs:
+  first-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/yarn-cache
+        with:
+          cache_path: ${{ env.CACHE_PATH }}
+
+  second-cache:
+    needs: [first-cache]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/yarn-cache
+        with:
+          cache_path: ${{ env.CACHE_PATH }}

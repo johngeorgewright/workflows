@@ -1,0 +1,30 @@
+name: Yarn Cache
+
+author: johngeorgewright
+
+description: Speed up your Node.js builds by caching the Yarn dependencies.
+
+inputs:
+  cache_path:
+    description: The cache paths
+    default: |
+      ~/.cache
+      .yarn/unplugged
+      .yarn/install-state.gz
+
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      run: echo "cache_key=${{ runner.os }}-node-$(node --version)-yarn-$(yarn --version)-${{ hashFiles('**/yarn.lock') }}" >> $GITHUB_OUTPUT
+
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.cache_path }}
+        key: ${{ steps.key.outputs.cache-key }}
+
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: yarn --imutable
