@@ -1,0 +1,28 @@
+name: NPM Cache
+
+author: johngeorgewright
+
+description: Speed up your Node.js builds by caching the NPM dependencies.
+
+inputs:
+  cache_path:
+    description: The cache paths
+    default: |
+      node_modules
+
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      run: echo "cache_key=${{ runner.os }}-node-$(npm --version)-npm-$(npm --version)-${{ hashFiles('**/package-lock.lock') }}" >> $GITHUB_OUTPUT
+
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.cache_path }}
+        key: ${{ steps.key.outputs.cache-key }}
+
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
