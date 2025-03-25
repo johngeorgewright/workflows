@@ -19,6 +19,7 @@ jobs:
       - uses: ./.github/actions/yarn-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
+          working-directory: ./test/actions/yarn-cache
 
   second-cache:
     needs: [first-cache]
@@ -29,3 +30,4 @@ jobs:
       - uses: ./.github/actions/yarn-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
+          working-directory: ./test/actions/yarn-cache

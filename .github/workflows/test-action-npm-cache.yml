@@ -17,6 +17,7 @@ jobs:
       - uses: ./.github/actions/npm-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
+          working-directory: ./test/actions/npm-cache
 
   second-cache:
     needs: [first-cache]
@@ -27,3 +28,4 @@ jobs:
       - uses: ./.github/actions/npm-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
+          working-directory: ./test/actions/npm-cache
