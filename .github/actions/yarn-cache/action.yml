@@ -25,7 +25,6 @@ runs:
 
     - id: cache
       uses: actions/cache@v4
-      working-directory: ${{ inputs.working-directory }}
       with:
         path: ${{ inputs.cache_path }}
         key: ${{ steps.key.outputs.cache-key }}

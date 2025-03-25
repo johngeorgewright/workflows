@@ -9,6 +9,7 @@ env:
     ~/.cache
     test/actions/yarn-cache/.yarn/unplugged
     test/actions/yarn-cache/.yarn/install-state.gz
+  WORKING_DIR: ./test/actions/yarn-cache
 
 jobs:
   first-cache:
@@ -19,7 +20,7 @@ jobs:
       - uses: ./.github/actions/yarn-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
-          working-directory: ./test/actions/yarn-cache
+          working-directory: ${{ env.WORKING_DIR }}
 
   second-cache:
     needs: [first-cache]
@@ -30,4 +31,4 @@ jobs:
       - uses: ./.github/actions/yarn-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
-          working-directory: ./test/actions/yarn-cache
+          working-directory: ${{ env.WORKING_DIR }}
