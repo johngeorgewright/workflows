@@ -1,0 +1,7 @@
+{
+  "name": "yarn-cache",
+  "packageManager": "yarn@4.7.0",
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

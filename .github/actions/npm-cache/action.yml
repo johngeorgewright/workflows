@@ -19,7 +19,7 @@ runs:
     - id: key
       working-directory: ${{ inputs.working-directory }}
       shell: bash
-      run: echo "cache-key=${{ runner.os }}-node-$(npm --version)-npm-$(npm --version)-${{ hashFiles('**/package-lock.json') }}" >> $GITHUB_OUTPUT
+      run: echo "cache-key=${{ runner.os }}-node-$(node --version)-npm-$(npm --version)-${{ hashFiles('**/package-lock.json') }}" >> $GITHUB_OUTPUT
 
     - id: cache
       uses: actions/cache@v4
