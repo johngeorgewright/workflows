@@ -32,4 +32,4 @@ runs:
     - if: steps.cache.outputs.cache-hit != 'true'
       working-directory: ${{ inputs.working-directory }}
       shell: bash
-      run: yarn --imutable
+      run: yarn --immutable
