@@ -1,0 +1,9 @@
+name: Outside action
+
+description: An action outside of the normal .github directory
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: echo "yay"
