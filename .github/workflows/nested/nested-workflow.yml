@@ -1,0 +1,9 @@
+name: Nested worflow
+
+description: A workflow nested inside the .github directory
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: echo "yay"
