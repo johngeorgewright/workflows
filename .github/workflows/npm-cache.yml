@@ -23,7 +23,7 @@ jobs:
       cache-key: ${{ steps.key.outputs.cache_key }}
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Node.js
         id: node
@@ -49,7 +49,7 @@ jobs:
       cache-path: ${{ env.CACHE_PATH }}
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Node.js
         id: node
