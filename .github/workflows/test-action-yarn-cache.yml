@@ -2,7 +2,7 @@ name: Test Yarn Cache Action
 
 on:
   pull_request:
-    paths: [.github/actions/yarn-cache/**]
+    paths: [actions/yarn-cache/**]
 
 env:
   CACHE_PATH: |
@@ -20,7 +20,7 @@ jobs:
         with:
           node-version-file: test/actions/yarn-cache/.nvmrc
       - run: corepack enable
-      - uses: ./.github/actions/yarn-cache
+      - uses: ./actions/yarn-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
           working-directory: ${{ env.WORKING_DIR }}
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version-file: test/actions/yarn-cache/.nvmrc
       - run: corepack enable
-      - uses: ./.github/actions/yarn-cache
+      - uses: ./actions/yarn-cache
         with:
           cache_path: ${{ env.CACHE_PATH }}
           working-directory: ${{ env.WORKING_DIR }}

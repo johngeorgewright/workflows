@@ -2,7 +2,7 @@ name: Test NPM Cache Action
 
 on:
   pull_request:
-    paths: [.github/actions/npm-cache/**]
+    paths: [actions/npm-cache/**]
 
 env:
   CACHE_PATH: test/actions/npm-cache/node_modules
