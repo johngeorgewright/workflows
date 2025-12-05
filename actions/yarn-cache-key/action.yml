@@ -1,0 +1,25 @@
+name: Yarn Cache Key
+
+author: johngeorgewright
+
+description: Create the Yarn dependency cache key.
+
+inputs:
+  working-directory:
+    description: An optional working directory to discover the cache key
+    required: false
+
+outputs:
+  key: 
+    description: The cache key
+    value: ${{ steps.key.outputs.cache-key }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      id: key
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        corepack enable
+        echo "cache_key=${{ runner.os }}-node-$(node --version)-yarn-$(yarn --version)-${{ hashFiles('**/yarn.lock') }}" >> $GITHUB_OUTPUT

@@ -23,10 +23,10 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Dependencies
-        uses: johngeorgewright/workflows/.github/actions/yarn-cache@main
+        uses: johngeorgewright/workflows/actions/yarn-cache@main
 
       # Or NPM
       # - name: Dependencies
-      #   uses: johngeorgewright/workflows/.github/actions/npm-cache@main
+      #   uses: johngeorgewright/workflows/actions/npm-cache@main
 ```
 

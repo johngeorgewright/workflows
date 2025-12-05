@@ -1,0 +1,72 @@
+name: Yarn Cache
+
+on:
+  workflow_call:
+    inputs:
+      runs-on: 
+        default: ubuntu-latest
+        required: false
+        type: string
+        description: Use runs-on to define the type of machine to run the job on.
+
+    outputs:
+      key:
+        value: ${{ jobs.key.outputs.cache-key }}
+      path:
+        value: ${{ jobs.prime.outputs.cache-path }}
+
+jobs:
+  key:
+    name: Key
+    runs-on: ${{ inputs.runs-on }}
+    outputs:
+      cache-key: ${{ steps.key.outputs.cache_key }}
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        id: node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Key
+        id: key
+        uses: johngeorgewright/workflows/actions/yarn-cache-key.yml@yarn-cache-action
+
+  prime:
+    name: Prime
+    needs: [key]
+    runs-on: ${{ inputs.runs-on }}
+    env:
+      CACHE_PATH: |
+        ~/.cache
+        .yarn/unplugged
+        .yarn/install-state.gz
+    concurrency:
+      group: ${{ needs.key.outputs.cache-key }}
+    outputs:
+      cache-path: ${{ env.CACHE_PATH }}
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v6
+
+      - name: Install Node.js
+        id: node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATH }}
+          key: ${{ needs.key.outputs.cache-key }}
+
+      - name: Install Depedencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          corepack enable
+          yarn --immutable

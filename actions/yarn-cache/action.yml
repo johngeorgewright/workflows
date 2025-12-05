@@ -1,14 +1,16 @@
-name: NPM Cache
+name: Yarn Cache
 
 author: johngeorgewright
 
-description: Speed up your Node.js builds by caching the NPM dependencies.
+description: Speed up your Node.js builds by caching the Yarn dependencies.
 
 inputs:
   cache_path:
     description: The cache paths
     default: |
-      node_modules
+      ~/.cache
+      .yarn/unplugged
+      .yarn/install-state.gz
   working-directory:
     description: Optional directory to execute in
     required: false
@@ -17,9 +19,7 @@ runs:
   using: composite
   steps:
     - id: key
-      working-directory: ${{ inputs.working-directory }}
-      shell: bash
-      run: echo "cache-key=${{ runner.os }}-node-$(node --version)-npm-$(npm --version)-${{ hashFiles('**/package-lock.json') }}" >> $GITHUB_OUTPUT
+      uses: johngeorgewright/workspaces/actions/yarn-cache-key@yarn-cache-action
 
     - id: cache
       uses: actions/cache@v4
@@ -30,4 +30,4 @@ runs:
     - if: steps.cache.outputs.cache-hit != 'true'
       working-directory: ${{ inputs.working-directory }}
       shell: bash
-      run: npm ci
+      run: yarn --immutable

@@ -1,0 +1,23 @@
+name: NPM Cache Key
+
+author: johngeorgewright
+
+description: Create the NPM dependency cache key.
+
+inputs:
+  working-directory:
+    description: An optional working directory to discover the cache key
+    required: false
+
+outputs:
+  key:
+    description: The cache key
+    value: ${{ steps.key.outputs.cache-key }}
+
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: echo "cache-key=${{ runner.os }}-node-$(node --version)-npm-$(npm --version)-${{ hashFiles('**/package-lock.json') }}" >> $GITHUB_OUTPUT
