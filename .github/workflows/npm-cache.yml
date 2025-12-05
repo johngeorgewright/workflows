@@ -3,7 +3,7 @@ name: NPM Cache
 on:
   workflow_call:
     inputs:
-      runs-on: 
+      runs-on:
         default: ubuntu-latest
         required: false
         type: string
@@ -16,6 +16,13 @@ on:
         value: ${{ jobs.prime.outputs.cache-path }}
 
 jobs:
+  deprecate:
+    name: Deprecated
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Message
+        run: echo "::warning title=Deprecated workflows::The johngeorgewright/workflows/.github/workflows/npm-cache.yml is dperecated. Please use johngeorgewright/workflows/npm-cache.yml instead."
+
   key:
     name: Key
     runs-on: ${{ inputs.runs-on }}
