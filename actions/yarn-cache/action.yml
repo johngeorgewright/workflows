@@ -19,7 +19,7 @@ runs:
   using: composite
   steps:
     - id: key
-      uses: johngeorgewright/workspaces/actions/yarn-cache-key@yarn-cache-action
+      uses: johngeorgewright/workflows/actions/yarn-cache-key@yarn-cache-action
 
     - id: cache
       uses: actions/cache@v4
