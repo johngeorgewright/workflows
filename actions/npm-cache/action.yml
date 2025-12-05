@@ -18,6 +18,8 @@ runs:
   steps:
     - id: key
       uses: johngeorgewright/workflows/actions/npm-cache-key@yarn-cache-action
+      with:
+        working-directory: ${{ inputs.working-directory }}
 
     - id: cache
       uses: actions/cache@v4

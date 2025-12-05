@@ -10,7 +10,7 @@ inputs:
     required: false
 
 outputs:
-  key:
+  cache-key:
     description: The cache key
     value: ${{ steps.key.outputs.cache-key }}
 
