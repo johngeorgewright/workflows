@@ -22,4 +22,4 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         corepack enable
-        echo "cache_key=${{ runner.os }}-node-$(node --version)-yarn-$(yarn --version)-${{ hashFiles('**/yarn.lock') }}" >> $GITHUB_OUTPUT
+        echo "cache-key=${{ runner.os }}-node-$(node --version)-yarn-$(yarn --version)-${{ hashFiles('**/yarn.lock') }}" >> $GITHUB_OUTPUT
