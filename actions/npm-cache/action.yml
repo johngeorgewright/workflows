@@ -17,7 +17,7 @@ runs:
   using: composite
   steps:
     - id: key
-      uses: johngeorgewright/workflows/actions/npm-cache-key@yarn-cache-action
+      uses: johngeorgewright/workflows/actions/npm-cache-key@main
       with:
         working-directory: ${{ inputs.working-directory }}
 

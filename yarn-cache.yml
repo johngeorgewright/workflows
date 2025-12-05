@@ -33,7 +33,7 @@ jobs:
 
       - name: Key
         id: key
-        uses: johngeorgewright/workflows/actions/yarn-cache-key.yml@yarn-cache-action
+        uses: johngeorgewright/workflows/actions/yarn-cache-key.yml@main
 
   prime:
     name: Prime
