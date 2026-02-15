@@ -24,6 +24,10 @@ inputs:
     description: If true, only check for updates without creating PRs
     required: false
     default: 'false'
+  recursive:
+    description: If true, checks workspace members recursively (--recursive flag)
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -42,21 +46,66 @@ runs:
         VERSION_POLICY: ${{ inputs.version-policy }}
         PR_LABELS: ${{ inputs.pr-labels }}
         DRY_RUN: ${{ inputs.dry-run }}
+        RECURSIVE: ${{ inputs.recursive }}
       run: | # shell
         set -e
         
         echo "🔍 Checking for outdated Deno dependencies..."
         echo ""
         
+        # Verify deno.json exists
+        if [[ ! -f "deno.json" ]] && [[ ! -f "deno.jsonc" ]]; then
+          echo "❌ Error: No deno.json or deno.jsonc file found in the current directory"
+          echo "Current directory: $(pwd)"
+          echo "Files in directory:"
+          ls -la
+          exit 1
+        fi
+        
         # Initialize step summary
         echo "# Deno Dependency Updates" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
+        # Build deno command flags
+        DENO_FLAGS=""
+        if [[ "$RECURSIVE" == "true" ]]; then
+          DENO_FLAGS="--recursive"
+        fi
+        
         # Run deno outdated and capture output
-        if ! OUTDATED_OUTPUT=$(deno outdated 2>&1); then
-          echo "Error running deno outdated:"
+        if ! OUTDATED_OUTPUT=$(deno outdated $DENO_FLAGS 2>&1); then
+          echo "❌ Error running deno outdated:"
           echo "$OUTDATED_OUTPUT"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "❌ **Error:** Failed to run \`deno outdated\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$OUTDATED_OUTPUT" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
           exit 1
+        fi
+        
+        # Check if output is empty (might indicate no deno.lock or other issue)
+        if [[ -z "$OUTDATED_OUTPUT" ]]; then
+          echo "⚠️ Warning: deno outdated produced no output"
+          echo "This usually means:"
+          echo "  - No deno.lock file exists (run 'deno install' first)"
+          echo "  - Or all dependencies are up to date"
+          echo ""
+          echo "Checking for deno.lock..."
+          if [[ ! -f "deno.lock" ]]; then
+            echo "❌ Error: No deno.lock file found"
+            echo "Please run 'deno install' in your repository first to generate deno.lock"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Error:** No \`deno.lock\` file found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The Deno Update action requires a \`deno.lock\` file to track dependencies." >> $GITHUB_STEP_SUMMARY
+            echo "Please run \`deno install\` in your repository and commit the generated \`deno.lock\` file." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✓ deno.lock exists, assuming all dependencies are up to date"
+          echo "✓ All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
+          exit 0
         fi
         
         echo "$OUTDATED_OUTPUT"
@@ -136,7 +185,7 @@ runs:
             fi
             
             # Update dependency using deno update
-            if ! deno update "$PACKAGE@$LATEST"; then
+            if ! deno update $DENO_FLAGS "$PACKAGE@$LATEST"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
               git checkout "$DEFAULT_BRANCH"
               continue

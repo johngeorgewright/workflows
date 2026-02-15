@@ -50,6 +50,7 @@ jobs:
 | `working-directory` | Directory to run commands in | No | `.` |
 | `pr-labels` | Comma-separated PR labels | No | `dependencies,deno` |
 | `dry-run` | If `true`, only check for updates without creating PRs | No | `false` |
+| `recursive` | If `true`, checks workspace members recursively | No | `false` |
 
 ## Version Policies
 
@@ -70,8 +71,12 @@ jobs:
 ## Requirements
 
 - Repository must have a `deno.json` or `deno.jsonc` file
+- **Repository must have a `deno.lock` file** (run `deno install` to generate)
 - GitHub token must have permissions to create branches and PRs
-- Deno dependencies must follow standard version format (e.g., `jsr:@std/fs@0.200.0`)
+- Deno dependencies must follow standard version format (e.g., `jsr:@std/fs@1.0.0`)
+
+> **Important:** The action requires a `deno.lock` file to detect outdated dependencies. If you don't have one, run `deno install` in your repository and commit the generated file.
+
 
 ## Example PR
 
