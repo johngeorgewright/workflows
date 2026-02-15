@@ -51,6 +51,7 @@ jobs:
 | `pr-labels` | Comma-separated PR labels | No | `dependencies,deno` |
 | `dry-run` | If `true`, only check for updates without creating PRs | No | `false` |
 | `recursive` | If `true`, checks workspace members recursively | No | `false` |
+| `preserve-semver-prefix` | If `true`, preserves semver prefixes (`^`, `~`) when updating | No | `true` |
 
 ## Version Policies
 
