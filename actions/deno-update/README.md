@@ -22,7 +22,18 @@ on:
 jobs:
   update-dependencies:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.6.9
+
       - uses: johngeorgewright/workflows/actions/deno-update@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
