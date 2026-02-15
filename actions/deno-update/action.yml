@@ -86,8 +86,8 @@ runs:
         echo "$OUTDATED_OUTPUT"
         echo ""
         
-        # Track updates for summary
-        UPDATES_SUMMARY=""
+        # Create temp file for summary (because pipe creates subshell)
+        SUMMARY_FILE=$(mktemp)
         
         # Parse the table output and process each outdated dependency
         # Skip header and border lines, extract package, current, and latest versions
@@ -135,7 +135,7 @@ runs:
             # Dry-run mode: just report what would be updated
             if [[ "$DRY_RUN" == "true" ]]; then
               echo "  [DRY-RUN] Would update $PACKAGE from $CURRENT to $LATEST"
-              UPDATES_SUMMARY="${UPDATES_SUMMARY}- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_)\n"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_)" >> "$SUMMARY_FILE"
               continue
             fi
             
@@ -192,7 +192,7 @@ runs:
             if [[ -n "$EXISTING_PR" ]]; then
               echo "  ✓ Updated PR #$EXISTING_PR"
               gh pr edit "$EXISTING_PR" --title "$COMMIT_MSG" --body "$PR_BODY"
-              UPDATES_SUMMARY="${UPDATES_SUMMARY}- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})\n"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})" >> "$SUMMARY_FILE"
             else
               # Build label arguments (one --label per label)
               LABELS_ARG=""
@@ -213,7 +213,7 @@ runs:
                 --json number --jq '.number')
               
               echo "  ✓ Created PR #$PR_NUMBER"
-              UPDATES_SUMMARY="${UPDATES_SUMMARY}- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})\n"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" >> "$SUMMARY_FILE"
             fi
             
             # Return to default branch for next iteration
@@ -223,10 +223,10 @@ runs:
         done
         
         # Write summary to step summary
-        if [[ -n "$UPDATES_SUMMARY" ]]; then
+        if [[ -s "$SUMMARY_FILE" ]]; then
           echo "## Updates" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo -e "$UPDATES_SUMMARY" >> $GITHUB_STEP_SUMMARY
+          cat "$SUMMARY_FILE" >> $GITHUB_STEP_SUMMARY
           
           if [[ "$DRY_RUN" == "true" ]]; then
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -236,6 +236,7 @@ runs:
           echo "✓ All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
         fi
         
+        # Clean up temp file
+        rm -f "$SUMMARY_FILE"
+        
         echo "✓ Done!"
-
-
