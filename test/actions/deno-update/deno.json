@@ -2,6 +2,6 @@
   "imports": {
     "@std/async": "jsr:@std/async@~1.0.0",
     "@std/fmt": "jsr:@std/fmt@1.0.0",
-    "@targetd/api": "jsr:@targetd/api@^7.0.3"
+    "@targetd/api": "jsr:@targetd/api@^8.0.3"
   }
 }
