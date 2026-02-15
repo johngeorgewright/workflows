@@ -11,7 +11,7 @@ inputs:
   version-policy:
     description: Version update policy - "compatible" (respect semver), "latest" (all updates), or "patch" (patch only)
     required: false
-    default: compatible
+    default: latest
   working-directory:
     description: Optional directory to execute in
     required: false
