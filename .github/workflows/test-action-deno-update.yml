@@ -1,0 +1,31 @@
+name: Test Deno Update Action
+
+on:
+  pull_request:
+    paths: [actions/deno-update/**]
+  workflow_dispatch:
+
+env:
+  WORKING_DIR: test/actions/deno-update
+
+jobs:
+  test-deno-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup test environment
+        working-directory: ${{ env.WORKING_DIR }}
+        run: | # shell
+          echo "Testing with Deno version: $(cat .dvmrc)"
+
+      - uses: ./actions/deno-update
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ${{ env.WORKING_DIR }}
+          version-policy: latest
+          pr-labels: test,dependencies,deno
+          dry-run: true

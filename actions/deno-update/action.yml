@@ -1,0 +1,242 @@
+name: Deno Update
+
+author: johngeorgewright
+
+description: Like dependabot, but only for Deno - automatically creates PRs for outdated dependencies
+
+inputs:
+  github-token:
+    description: GitHub token with permissions to create PRs
+    required: true
+  version-policy:
+    description: Version update policy - "compatible" (respect semver), "latest" (all updates), or "patch" (patch only)
+    required: false
+    default: compatible
+  working-directory:
+    description: Optional directory to execute in
+    required: false
+    default: .
+  pr-labels:
+    description: Comma-separated labels to apply to PRs
+    required: false
+    default: dependencies,deno
+  dry-run:
+    description: If true, only check for updates without creating PRs
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        token: ${{ inputs.github-token }}
+
+    - name: Detect Deno version
+      id: deno-version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [[ -f .dvmrc ]]; then
+          VERSION=$(cat .dvmrc)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using Deno version from .dvmrc: $VERSION"
+        else
+          echo "version=" >> $GITHUB_OUTPUT
+          echo "No .dvmrc found, using latest Deno version"
+        fi
+
+    - name: Setup Deno
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: ${{ steps.deno-version.outputs.version || 'latest' }}
+
+    - name: Configure git
+      shell: bash
+      run: | # shell
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Check for outdated dependencies and create PRs
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION_POLICY: ${{ inputs.version-policy }}
+        PR_LABELS: ${{ inputs.pr-labels }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: | # shell
+        set -e
+        
+        echo "🔍 Checking for outdated Deno dependencies..."
+        echo ""
+        
+        # Initialize step summary
+        echo "# Deno Dependency Updates" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Run deno outdated and capture output
+        if ! OUTDATED_OUTPUT=$(deno outdated 2>&1); then
+          echo "Error running deno outdated:"
+          echo "$OUTDATED_OUTPUT"
+          exit 1
+        fi
+        
+        echo "$OUTDATED_OUTPUT"
+        echo ""
+        
+        # Create temp file for summary (because pipe creates subshell)
+        SUMMARY_FILE=$(mktemp)
+        
+        # Parse the table output and process each outdated dependency
+        # Skip header and border lines, extract package, current, and latest versions
+        echo "$OUTDATED_OUTPUT" | tail -n +4 | grep -v "^[└├┌]" | while IFS= read -r line; do
+          # Extract fields from table row: │ Package │ Current │ Update │ Latest │
+          if [[ $line =~ │[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│ ]]; then
+            PACKAGE="${BASH_REMATCH[1]}"
+            CURRENT="${BASH_REMATCH[2]}"
+            LATEST="${BASH_REMATCH[4]}"
+            
+            # Trim whitespace
+            PACKAGE=$(echo "$PACKAGE" | xargs)
+            CURRENT=$(echo "$CURRENT" | xargs)
+            LATEST=$(echo "$LATEST" | xargs)
+            
+            # Skip if empty
+            [[ -z "$PACKAGE" ]] && continue
+            
+            # Determine update type (major/minor/patch)
+            CURRENT_PARTS=(${CURRENT//./ })
+            LATEST_PARTS=(${LATEST//./ })
+            
+            UPDATE_TYPE="patch"
+            if [[ ${LATEST_PARTS[0]} -gt ${CURRENT_PARTS[0]} ]]; then
+              UPDATE_TYPE="major"
+            elif [[ ${LATEST_PARTS[1]} -gt ${CURRENT_PARTS[1]} ]]; then
+              UPDATE_TYPE="minor"
+            fi
+            
+            # Apply version policy filter
+            case "$VERSION_POLICY" in
+              patch)
+                [[ "$UPDATE_TYPE" != "patch" ]] && continue
+                ;;
+              compatible)
+                [[ "$UPDATE_TYPE" == "major" ]] && continue
+                ;;
+              latest)
+                # Update everything
+                ;;
+            esac
+            
+            echo "Processing: $PACKAGE ($CURRENT → $LATEST) [$UPDATE_TYPE]"
+            
+            # Dry-run mode: just report what would be updated
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "  [DRY-RUN] Would update $PACKAGE from $CURRENT to $LATEST"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_)" >> "$SUMMARY_FILE"
+              continue
+            fi
+            
+            # Sanitize package name for branch
+            SAFE_NAME=$(echo "$PACKAGE" | sed 's|^jsr:||; s|^npm:||; s|^https\?://||; s|[@/]|-|g; s|[^a-zA-Z0-9._-]||g')
+            BRANCH_NAME="dependencies/deno/$SAFE_NAME"
+            
+            # Check if PR already exists
+            EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number' 2>/dev/null || echo "")
+            
+            # Get default branch
+            DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d: -f2 | xargs)
+            
+            # Create or update branch
+            git fetch origin "$DEFAULT_BRANCH"
+            if git rev-parse --verify "origin/$BRANCH_NAME" >/dev/null 2>&1; then
+              echo "  Updating existing branch: $BRANCH_NAME"
+              git checkout -B "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+            else
+              echo "  Creating new branch: $BRANCH_NAME"
+              git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
+            fi
+            
+            # Update dependency using deno update
+            if ! deno update "$PACKAGE@$LATEST"; then
+              echo "  ⚠ Could not update $PACKAGE - skipping"
+              git checkout "$DEFAULT_BRANCH"
+              continue
+            fi
+            
+            # Check if anything changed
+            if git diff --quiet; then
+              echo "  No changes needed"
+              git checkout "$DEFAULT_BRANCH"
+              continue
+            fi
+            
+            echo "  ✓ Updated $PACKAGE"
+            
+            # Commit and push
+            COMMIT_MSG="Bump $PACKAGE from $CURRENT to $LATEST"
+            git add .
+            git commit -m "$COMMIT_MSG"
+            git push -f origin "$BRANCH_NAME"
+            
+            # Create or update PR
+            PR_BODY="Bumps \`$PACKAGE\` from $CURRENT to $LATEST.
+            
+            **Update type:** $UPDATE_TYPE
+            
+            ---
+            Created by [Deno Update Action](https://github.com/johngeorgewright/workflows)"
+            
+            if [[ -n "$EXISTING_PR" ]]; then
+              echo "  ✓ Updated PR #$EXISTING_PR"
+              gh pr edit "$EXISTING_PR" --title "$COMMIT_MSG" --body "$PR_BODY"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})" >> "$SUMMARY_FILE"
+            else
+              # Build label arguments (one --label per label)
+              LABELS_ARG=""
+              if [[ -n "$PR_LABELS" ]]; then
+                IFS=',' read -ra LABELS <<< "$PR_LABELS"
+                for LABEL in "${LABELS[@]}"; do
+                  LABEL=$(echo "$LABEL" | xargs)
+                  LABELS_ARG="$LABELS_ARG --label $LABEL"
+                done
+              fi
+              
+              PR_NUMBER=$(gh pr create \
+                --title "$COMMIT_MSG" \
+                --body "$PR_BODY" \
+                --base "$DEFAULT_BRANCH" \
+                --head "$BRANCH_NAME" \
+                $LABELS_ARG \
+                --json number --jq '.number')
+              
+              echo "  ✓ Created PR #$PR_NUMBER"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" >> "$SUMMARY_FILE"
+            fi
+            
+            # Return to default branch for next iteration
+            git checkout "$DEFAULT_BRANCH"
+            echo ""
+          fi
+        done
+        
+        # Write summary to step summary
+        if [[ -s "$SUMMARY_FILE" ]]; then
+          echo "## Updates" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "$SUMMARY_FILE" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "_Running in dry-run mode - no PRs were created_" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "✓ All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Clean up temp file
+        rm -f "$SUMMARY_FILE"
+        
+        echo "✓ Done!"
