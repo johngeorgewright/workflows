@@ -38,22 +38,10 @@ runs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
 
-    - name: Check for outdated dependencies and create PRs
+    - name: Verify deno.json exists
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        VERSION_POLICY: ${{ inputs.version-policy }}
-        PR_LABELS: ${{ inputs.pr-labels }}
-        DRY_RUN: ${{ inputs.dry-run }}
-        RECURSIVE: ${{ inputs.recursive }}
       run: | # shell
-        set -e
-        
-        echo "🔍 Checking for outdated Deno dependencies..."
-        echo ""
-        
-        # Verify deno.json exists
         if [[ ! -f "deno.json" ]] && [[ ! -f "deno.jsonc" ]]; then
           echo "❌ Error: No deno.json or deno.jsonc file found in the current directory"
           echo "Current directory: $(pwd)"
@@ -61,10 +49,23 @@ runs:
           ls -la
           exit 1
         fi
-        
-        # Initialize step summary
+
+    - name: Initialize step summary
+      shell: bash
+      run: | # shell
         echo "# Deno Dependency Updates" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Run deno outdated
+      id: outdated
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RECURSIVE: ${{ inputs.recursive }}
+      run: | # shell
+        set -e
+        echo "🔍 Checking for outdated Deno dependencies..."
+        echo ""
         
         # Build deno command flags
         DENO_FLAGS=""
@@ -111,13 +112,84 @@ runs:
         echo "$OUTDATED_OUTPUT"
         echo ""
         
-        # Create temp file for summary (because pipe creates subshell)
+        # Save output for next step
+        echo "$OUTDATED_OUTPUT" > /tmp/deno-outdated.txt
+
+    - name: Get default branch
+      id: default-branch
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: | # shell
+        DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d: -f2 | xargs)
+        echo "default-branch=$DEFAULT_BRANCH" >> $GITHUB_OUTPUT
+        echo "Default branch: $DEFAULT_BRANCH"
+
+    - name: Ensure PR labels exist
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_LABELS: ${{ inputs.pr-labels }}
+      run: | # shell
+        if [[ -z "$PR_LABELS" ]]; then
+          echo "No labels specified, skipping label creation"
+          exit 0
+        fi
+        
+        IFS=',' read -ra LABELS <<< "$PR_LABELS"
+        for LABEL in "${LABELS[@]}"; do
+          LABEL=$(echo "$LABEL" | xargs)
+          if ! gh label list --json name --jq '.[].name' | grep -q "^${LABEL}$"; then
+            echo "Creating label: $LABEL"
+            if gh label create "$LABEL" --color "0366d6" --description "Automated label" 2>/dev/null; then
+              echo "✓ Created label '$LABEL'"
+            fi
+          else
+            echo "Label '$LABEL' already exists"
+          fi
+        done
+
+    - name: Process outdated dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION_POLICY: ${{ inputs.version-policy }}
+        PR_LABELS: ${{ inputs.pr-labels }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        RECURSIVE: ${{ inputs.recursive }}
+        DEFAULT_BRANCH: ${{ steps.default-branch.outputs.default-branch }}
+      run: | # shell
+        set -e
+        
+        # Create temp file for summary
         SUMMARY_FILE=$(mktemp)
         FAILED_UPDATES=0
         
+        # Build deno command flags
+        DENO_FLAGS=""
+        if [[ "$RECURSIVE" == "true" ]]; then
+          DENO_FLAGS="--recursive"
+        fi
+        
+        # Determine update flag based on version policy
+        UPDATE_FLAG="--latest"
+        if [[ "$VERSION_POLICY" == "compatible" ]]; then
+          UPDATE_FLAG="--compatible"
+        fi
+        
+        # Build label arguments
+        LABELS_ARG=""
+        if [[ -n "$PR_LABELS" ]]; then
+          IFS=',' read -ra LABELS <<< "$PR_LABELS"
+          for LABEL in "${LABELS[@]}"; do
+            LABEL=$(echo "$LABEL" | xargs)
+            LABELS_ARG="$LABELS_ARG --label $LABEL"
+          done
+        fi
+        
         # Parse the table output and process each outdated dependency
-        # Skip header and border lines, extract package, current, and latest versions
-        echo "$OUTDATED_OUTPUT" | tail -n +4 | grep -v "^[└├┌]" | while IFS= read -r line; do
+        cat /tmp/deno-outdated.txt | tail -n +4 | grep -v "^[└├┌]" | while IFS= read -r line; do
           # Extract fields from table row: │ Package │ Current │ Update │ Latest │
           if [[ $line =~ │[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│ ]]; then
             PACKAGE="${BASH_REMATCH[1]}"
@@ -135,17 +207,16 @@ runs:
             [[ -z "$PACKAGE" ]] && continue
             
             # Determine which target version based on policy
-            # compatible uses Update column, latest uses Latest column
             if [[ "$VERSION_POLICY" == "compatible" ]]; then
               TARGET="$UPDATE"
             else
               TARGET="$LATEST"
             fi
             
-            # Skip if current matches target (already up to date for this policy)
+            # Skip if current matches target
             [[ "$CURRENT" == "$TARGET" ]] && continue
             
-            # Determine update type (major/minor/patch) for display purposes
+            # Determine update type
             CURRENT_PARTS=(${CURRENT//./ })
             TARGET_PARTS=(${TARGET//./ })
             
@@ -165,9 +236,6 @@ runs:
             # Check if PR already exists
             EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --json number --jq '.[0].number' 2>/dev/null || echo "")
             
-            # Get default branch
-            DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d: -f2 | xargs)
-            
             # Create or update branch
             git fetch origin "$DEFAULT_BRANCH"
             if git rev-parse --verify "origin/$BRANCH_NAME" >/dev/null 2>&1; then
@@ -178,19 +246,11 @@ runs:
               git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
             fi
             
-            # Update dependency using deno update with appropriate flag
-            # Strip protocol-style prefix (jsr:, npm:, http://, https://, etc.) from package name
-            UPDATE_PACKAGE="${PACKAGE#*://}"  # Strip protocol:// if present
-            [[ "$UPDATE_PACKAGE" == "$PACKAGE" ]] && UPDATE_PACKAGE="${PACKAGE#*:}"  # Otherwise strip prefix:
+            # Strip prefix from package name for deno update
+            UPDATE_PACKAGE="${PACKAGE#*://}"
+            [[ "$UPDATE_PACKAGE" == "$PACKAGE" ]] && UPDATE_PACKAGE="${PACKAGE#*:}"
             
-            # Determine update flag based on version policy
-            UPDATE_FLAG="--latest"
-            if [[ "$VERSION_POLICY" == "compatible" ]]; then
-              UPDATE_FLAG="--compatible"
-            fi
-            
-            # Run deno update with the appropriate flag
-            # This will preserve semver prefixes and respect the policy
+            # Run deno update
             if ! deno update $DENO_FLAGS $UPDATE_FLAG "$UPDATE_PACKAGE"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
               FAILED_UPDATES=$((FAILED_UPDATES + 1))
@@ -226,23 +286,6 @@ runs:
               gh pr edit "$EXISTING_PR" --title "$COMMIT_MSG" --body "$PR_BODY"
               echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${TARGET}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})" >> "$SUMMARY_FILE"
             else
-              # Build label arguments and ensure labels exist
-              LABELS_ARG=""
-              if [[ -n "$PR_LABELS" ]]; then
-                IFS=',' read -ra LABELS <<< "$PR_LABELS"
-                for LABEL in "${LABELS[@]}"; do
-                  LABEL=$(echo "$LABEL" | xargs)
-                  # Create label if it doesn't exist
-                  if ! gh label list --json name --jq '.[].name' | grep -q "^${LABEL}$"; then
-                    echo "  Creating label: $LABEL"
-                    if gh label create "$LABEL" --color "0366d6" --description "Automated label" 2>/dev/null; then
-                      echo "  ✓ Created label '$LABEL'" >> "$SUMMARY_FILE"
-                    fi
-                  fi
-                  LABELS_ARG="$LABELS_ARG --label $LABEL"
-                done
-              fi
-              
               # Add --dry-run flag if in dry-run mode
               DRY_RUN_FLAG=""
               if [[ "$DRY_RUN" == "true" ]]; then
@@ -267,14 +310,26 @@ runs:
               fi
             fi
             
-            # Return to default branch for next iteration
+            # Return to default branch
             git checkout "$DEFAULT_BRANCH"
             echo ""
           fi
         done
         
-        # Write summary to step summary
-        if [[ -s "$SUMMARY_FILE" ]]; then
+        # Save summary file path for next step
+        echo "$SUMMARY_FILE" > /tmp/summary-file-path.txt
+        echo "$FAILED_UPDATES" > /tmp/failed-updates-count.txt
+
+    - name: Write summary
+      if: always()
+      shell: bash
+      env:
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: | # shell
+        SUMMARY_FILE=$(cat /tmp/summary-file-path.txt 2>/dev/null || echo "")
+        FAILED_UPDATES=$(cat /tmp/failed-updates-count.txt 2>/dev/null || echo "0")
+        
+        if [[ -n "$SUMMARY_FILE" ]] && [[ -s "$SUMMARY_FILE" ]]; then
           echo "## Updates" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           cat "$SUMMARY_FILE" >> $GITHUB_STEP_SUMMARY
@@ -283,14 +338,18 @@ runs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "_Running in dry-run mode - no PRs were created_" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          rm -f "$SUMMARY_FILE"
         else
           echo "✓ All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
         fi
         
-        # Clean up temp file
-        rm -f "$SUMMARY_FILE"
+        # Clean up temp files
+        rm -f /tmp/summary-file-path.txt
+        rm -f /tmp/failed-updates-count.txt
+        rm -f /tmp/deno-outdated.txt
         
-        if [[ $FAILED_UPDATES -gt 0 ]]; then
+        if [[ "$FAILED_UPDATES" -gt 0 ]]; then
           echo ""
           echo "❌ Failed to update $FAILED_UPDATES package(s)"
           echo "" >> $GITHUB_STEP_SUMMARY
