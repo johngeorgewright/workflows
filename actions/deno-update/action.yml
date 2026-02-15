@@ -158,13 +158,6 @@ runs:
             
             echo "Processing: $PACKAGE ($CURRENT → $LATEST) [$UPDATE_TYPE]"
             
-            # Dry-run mode: just report what would be updated
-            if [[ "$DRY_RUN" == "true" ]]; then
-              echo "  [DRY-RUN] Would update $PACKAGE from $CURRENT to $LATEST"
-              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_)" >> "$SUMMARY_FILE"
-              continue
-            fi
-            
             # Sanitize package name for branch
             SAFE_NAME=$(echo "$PACKAGE" | sed 's|^jsr:||; s|^npm:||; s|^https\?://||; s|[@/]|-|g; s|[^a-zA-Z0-9._-]||g')
             BRANCH_NAME="dependencies/deno/$SAFE_NAME"
