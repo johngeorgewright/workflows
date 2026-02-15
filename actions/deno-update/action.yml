@@ -188,7 +188,7 @@ runs:
             UPDATE_PACKAGE="${PACKAGE#*://}"  # Strip protocol:// if present
             [[ "$UPDATE_PACKAGE" == "$PACKAGE" ]] && UPDATE_PACKAGE="${PACKAGE#*:}"  # Otherwise strip prefix:
             
-            # Detect and temporarily remove semver prefix from deno.json before update
+            # Detect semver prefix from deno.json before update
             SEMVER_PREFIX=""
             if [[ "$PRESERVE_SEMVER_PREFIX" == "true" ]]; then
               # Extract the version constraint from deno.json for this package
@@ -196,27 +196,21 @@ runs:
                 CURRENT_VERSION=$(jq -r ".imports[\"$PACKAGE\"]? // empty" deno.json 2>/dev/null || echo "")
                 if [[ "$CURRENT_VERSION" =~ @(\^|~) ]]; then
                   SEMVER_PREFIX="${BASH_REMATCH[1]}"
-                  # Temporarily remove the semver prefix to allow deno update to work
-                  TEMP_FILE=$(mktemp)
-                  jq ".imports[\"$PACKAGE\"] = (.imports[\"$PACKAGE\"] | sub(\"@[\\^~]\"; \"@\"))" deno.json > "$TEMP_FILE" && mv "$TEMP_FILE" deno.json
-                  echo "  Temporarily removed semver prefix '$SEMVER_PREFIX' to allow update"
+                  echo "  Detected semver prefix '$SEMVER_PREFIX'"
                 fi
               fi
             fi
             
-            if ! deno update $DENO_FLAGS "$UPDATE_PACKAGE@$LATEST"; then
+            # Use deno add instead of deno update to force the specific version
+            # This bypasses any semver constraints in deno.json
+            if ! deno add "$PACKAGE@$LATEST"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
-              # Restore semver prefix before abandoning (in case we removed it)
-              if [[ -n "$SEMVER_PREFIX" ]] && [[ -f "deno.json" ]]; then
-                TEMP_FILE=$(mktemp)
-                jq ".imports[\"$PACKAGE\"] = (.imports[\"$PACKAGE\"] | sub(\"@([0-9])\"; \"@${SEMVER_PREFIX}\\1\"))" deno.json > "$TEMP_FILE" && mv "$TEMP_FILE" deno.json
-              fi
               FAILED_UPDATES=$((FAILED_UPDATES + 1))
               git checkout "$DEFAULT_BRANCH"
               continue
             fi
             
-            # Restore semver prefix if it was present
+            # Restore semver prefix if it was present (deno add removes it)
             if [[ -n "$SEMVER_PREFIX" ]] && [[ -f "deno.json" ]]; then
               # Replace the version in deno.json to include the semver prefix
               TEMP_FILE=$(mktemp)
