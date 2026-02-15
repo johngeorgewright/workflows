@@ -218,12 +218,19 @@ runs:
               gh pr edit "$EXISTING_PR" --title "$COMMIT_MSG" --body "$PR_BODY"
               echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})" >> "$SUMMARY_FILE"
             else
-              # Build label arguments (one --label per label)
+              # Build label arguments and ensure labels exist
               LABELS_ARG=""
               if [[ -n "$PR_LABELS" ]]; then
                 IFS=',' read -ra LABELS <<< "$PR_LABELS"
                 for LABEL in "${LABELS[@]}"; do
                   LABEL=$(echo "$LABEL" | xargs)
+                  # Create label if it doesn't exist
+                  if ! gh label list --json name --jq '.[].name' | grep -q "^${LABEL}$"; then
+                    echo "  Creating label: $LABEL"
+                    if gh label create "$LABEL" --color "0366d6" --description "Automated label" 2>/dev/null; then
+                      echo "  ✓ Created label '$LABEL'" >> "$SUMMARY_FILE"
+                    fi
+                  fi
                   LABELS_ARG="$LABELS_ARG --label $LABEL"
                 done
               fi
