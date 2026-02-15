@@ -9,7 +9,7 @@ env:
   WORKING_DIR: test/actions/deno-update
 
 jobs:
-  test-deno-update:
+  test-deno-update-latest:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,10 +27,38 @@ jobs:
         run: | # shell
           echo "Testing with Deno version: $(cat .dvmrc)"
 
-      - uses: ./actions/deno-update
+      - name: Test with version-policy=latest
+        uses: ./actions/deno-update
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: ${{ env.WORKING_DIR }}
           version-policy: latest
+          pr-labels: test,dependencies,deno
+          dry-run: true
+
+  test-deno-update-compatible:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version-file: ${{ env.WORKING_DIR }}/.dvmrc
+
+      - name: Setup test environment
+        working-directory: ${{ env.WORKING_DIR }}
+        run: | # shell
+          echo "Testing with Deno version: $(cat .dvmrc)"
+
+      - name: Test with version-policy=compatible
+        uses: ./actions/deno-update
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: ${{ env.WORKING_DIR }}
+          version-policy: compatible
           pr-labels: test,dependencies,deno
           dry-run: true
