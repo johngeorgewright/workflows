@@ -235,16 +235,28 @@ runs:
                 done
               fi
               
-              PR_NUMBER=$(gh pr create \
+              # Add --dry-run flag if in dry-run mode
+              DRY_RUN_FLAG=""
+              if [[ "$DRY_RUN" == "true" ]]; then
+                DRY_RUN_FLAG="--dry-run"
+              fi
+              
+              PR_URL=$(gh pr create \
                 --title "$COMMIT_MSG" \
                 --body "$PR_BODY" \
                 --base "$DEFAULT_BRANCH" \
                 --head "$BRANCH_NAME" \
                 $LABELS_ARG \
-                --json number --jq '.number')
+                $DRY_RUN_FLAG)
+              PR_NUMBER=$(echo "$PR_URL" | sed -n 's|.*/pull/\([0-9]*\)|\1|p')
               
-              echo "  ✓ Created PR #$PR_NUMBER"
-              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" >> "$SUMMARY_FILE"
+              if [[ "$DRY_RUN" == "true" ]]; then
+                echo "  ✓ Would create PR (dry-run)"
+                echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Would create PR (dry-run)" >> "$SUMMARY_FILE"
+              else
+                echo "  ✓ Created PR #$PR_NUMBER"
+                echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" >> "$SUMMARY_FILE"
+              fi
             fi
             
             # Return to default branch for next iteration
