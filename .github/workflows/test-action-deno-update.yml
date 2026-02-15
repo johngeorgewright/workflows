@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version-file: ${{ env.WORKING_DIR }}/.dvmrc
+
       - name: Setup test environment
         working-directory: ${{ env.WORKING_DIR }}
         run: | # shell
