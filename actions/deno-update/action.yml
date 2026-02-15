@@ -113,6 +113,7 @@ runs:
         
         # Create temp file for summary (because pipe creates subshell)
         SUMMARY_FILE=$(mktemp)
+        FAILED_UPDATES=0
         
         # Parse the table output and process each outdated dependency
         # Skip header and border lines, extract package, current, and latest versions
@@ -185,8 +186,13 @@ runs:
             fi
             
             # Update dependency using deno update
-            if ! deno update $DENO_FLAGS "$PACKAGE@$LATEST"; then
+            # Strip protocol-style prefix (jsr:, npm:, http://, https://, etc.) from package name
+            UPDATE_PACKAGE="${PACKAGE#*://}"  # Strip protocol:// if present
+            [[ "$UPDATE_PACKAGE" == "$PACKAGE" ]] && UPDATE_PACKAGE="${PACKAGE#*:}"  # Otherwise strip prefix:
+            
+            if ! deno update $DENO_FLAGS "$UPDATE_PACKAGE@$LATEST"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
+              FAILED_UPDATES=$((FAILED_UPDATES + 1))
               git checkout "$DEFAULT_BRANCH"
               continue
             fi
@@ -263,5 +269,15 @@ runs:
         
         # Clean up temp file
         rm -f "$SUMMARY_FILE"
+        
+        if [[ $FAILED_UPDATES -gt 0 ]]; then
+          echo ""
+          echo "❌ Failed to update $FAILED_UPDATES package(s)"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Warning:** $FAILED_UPDATES package(s) could not be updated. Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
         
         echo "✓ Done!"
