@@ -72,6 +72,10 @@ runs:
         echo "🔍 Checking for outdated Deno dependencies..."
         echo ""
         
+        # Initialize step summary
+        echo "# Deno Dependency Updates" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
         # Run deno outdated and capture output
         if ! OUTDATED_OUTPUT=$(deno outdated 2>&1); then
           echo "Error running deno outdated:"
@@ -81,6 +85,9 @@ runs:
         
         echo "$OUTDATED_OUTPUT"
         echo ""
+        
+        # Track updates for summary
+        UPDATES_SUMMARY=""
         
         # Parse the table output and process each outdated dependency
         # Skip header and border lines, extract package, current, and latest versions
@@ -128,6 +135,7 @@ runs:
             # Dry-run mode: just report what would be updated
             if [[ "$DRY_RUN" == "true" ]]; then
               echo "  [DRY-RUN] Would update $PACKAGE from $CURRENT to $LATEST"
+              UPDATES_SUMMARY="${UPDATES_SUMMARY}- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_)\n"
               continue
             fi
             
@@ -184,6 +192,7 @@ runs:
             if [[ -n "$EXISTING_PR" ]]; then
               echo "  ✓ Updated PR #$EXISTING_PR"
               gh pr edit "$EXISTING_PR" --title "$COMMIT_MSG" --body "$PR_BODY"
+              UPDATES_SUMMARY="${UPDATES_SUMMARY}- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})\n"
             else
               # Build label arguments (one --label per label)
               LABELS_ARG=""
@@ -204,6 +213,7 @@ runs:
                 --json number --jq '.number')
               
               echo "  ✓ Created PR #$PR_NUMBER"
+              UPDATES_SUMMARY="${UPDATES_SUMMARY}- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})\n"
             fi
             
             # Return to default branch for next iteration
@@ -211,6 +221,20 @@ runs:
             echo ""
           fi
         done
+        
+        # Write summary to step summary
+        if [[ -n "$UPDATES_SUMMARY" ]]; then
+          echo "## Updates" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo -e "$UPDATES_SUMMARY" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "_Running in dry-run mode - no PRs were created_" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "✓ All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
+        fi
         
         echo "✓ Done!"
 
