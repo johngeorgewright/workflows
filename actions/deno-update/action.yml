@@ -9,7 +9,7 @@ inputs:
     description: GitHub token with permissions to create PRs
     required: true
   version-policy:
-    description: Version update policy - "compatible" (respect semver), "latest" (all updates), or "patch" (patch only)
+    description: Version update policy - "compatible" (semver compatible updates) or "latest" (all updates)
     required: false
     default: latest
   working-directory:
@@ -28,10 +28,6 @@ inputs:
     description: If true, checks workspace members recursively (--recursive flag)
     required: false
     default: 'false'
-  preserve-semver-prefix:
-    description: If true, preserves semver prefixes (^, ~) when updating versions
-    required: false
-    default: 'true'
 
 runs:
   using: composite
@@ -51,7 +47,6 @@ runs:
         PR_LABELS: ${{ inputs.pr-labels }}
         DRY_RUN: ${{ inputs.dry-run }}
         RECURSIVE: ${{ inputs.recursive }}
-        PRESERVE_SEMVER_PREFIX: ${{ inputs.preserve-semver-prefix }}
       run: | # shell
         set -e
         
@@ -127,41 +122,41 @@ runs:
           if [[ $line =~ │[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│[[:space:]]*([^│]+)[[:space:]]*│ ]]; then
             PACKAGE="${BASH_REMATCH[1]}"
             CURRENT="${BASH_REMATCH[2]}"
+            UPDATE="${BASH_REMATCH[3]}"
             LATEST="${BASH_REMATCH[4]}"
             
             # Trim whitespace
             PACKAGE=$(echo "$PACKAGE" | xargs)
             CURRENT=$(echo "$CURRENT" | xargs)
+            UPDATE=$(echo "$UPDATE" | xargs)
             LATEST=$(echo "$LATEST" | xargs)
             
             # Skip if empty
             [[ -z "$PACKAGE" ]] && continue
             
-            # Determine update type (major/minor/patch)
+            # Determine which target version based on policy
+            # compatible uses Update column, latest uses Latest column
+            if [[ "$VERSION_POLICY" == "compatible" ]]; then
+              TARGET="$UPDATE"
+            else
+              TARGET="$LATEST"
+            fi
+            
+            # Skip if current matches target (already up to date for this policy)
+            [[ "$CURRENT" == "$TARGET" ]] && continue
+            
+            # Determine update type (major/minor/patch) for display purposes
             CURRENT_PARTS=(${CURRENT//./ })
-            LATEST_PARTS=(${LATEST//./ })
+            TARGET_PARTS=(${TARGET//./ })
             
             UPDATE_TYPE="patch"
-            if [[ ${LATEST_PARTS[0]} -gt ${CURRENT_PARTS[0]} ]]; then
+            if [[ ${TARGET_PARTS[0]} -gt ${CURRENT_PARTS[0]} ]]; then
               UPDATE_TYPE="major"
-            elif [[ ${LATEST_PARTS[1]} -gt ${CURRENT_PARTS[1]} ]]; then
+            elif [[ ${TARGET_PARTS[1]} -gt ${CURRENT_PARTS[1]} ]]; then
               UPDATE_TYPE="minor"
             fi
             
-            # Apply version policy filter
-            case "$VERSION_POLICY" in
-              patch)
-                [[ "$UPDATE_TYPE" != "patch" ]] && continue
-                ;;
-              compatible)
-                [[ "$UPDATE_TYPE" == "major" ]] && continue
-                ;;
-              latest)
-                # Update everything
-                ;;
-            esac
-            
-            echo "Processing: $PACKAGE ($CURRENT → $LATEST) [$UPDATE_TYPE]"
+            echo "Processing: $PACKAGE ($CURRENT → $TARGET) [$UPDATE_TYPE]"
             
             # Sanitize package name for branch
             SAFE_NAME=$(echo "$PACKAGE" | sed 's|^jsr:||; s|^npm:||; s|^https\?://||; s|[@/]|-|g; s|[^a-zA-Z0-9._-]||g')
@@ -183,39 +178,24 @@ runs:
               git checkout -b "$BRANCH_NAME" "origin/$DEFAULT_BRANCH"
             fi
             
-            # Update dependency using deno update
+            # Update dependency using deno update with appropriate flag
             # Strip protocol-style prefix (jsr:, npm:, http://, https://, etc.) from package name
             UPDATE_PACKAGE="${PACKAGE#*://}"  # Strip protocol:// if present
             [[ "$UPDATE_PACKAGE" == "$PACKAGE" ]] && UPDATE_PACKAGE="${PACKAGE#*:}"  # Otherwise strip prefix:
             
-            # Detect semver prefix from deno.json before update
-            SEMVER_PREFIX=""
-            if [[ "$PRESERVE_SEMVER_PREFIX" == "true" ]]; then
-              # Extract the version constraint from deno.json for this package
-              if [[ -f "deno.json" ]]; then
-                CURRENT_VERSION=$(jq -r ".imports[\"$PACKAGE\"]? // empty" deno.json 2>/dev/null || echo "")
-                if [[ "$CURRENT_VERSION" =~ @(\^|~) ]]; then
-                  SEMVER_PREFIX="${BASH_REMATCH[1]}"
-                  echo "  Detected semver prefix '$SEMVER_PREFIX'"
-                fi
-              fi
+            # Determine update flag based on version policy
+            UPDATE_FLAG="--latest"
+            if [[ "$VERSION_POLICY" == "compatible" ]]; then
+              UPDATE_FLAG="--compatible"
             fi
             
-            # Use deno add instead of deno update to force the specific version
-            # This bypasses any semver constraints in deno.json
-            if ! deno add "$PACKAGE@$LATEST"; then
+            # Run deno update with the appropriate flag
+            # This will preserve semver prefixes and respect the policy
+            if ! deno update $DENO_FLAGS $UPDATE_FLAG "$UPDATE_PACKAGE"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
               FAILED_UPDATES=$((FAILED_UPDATES + 1))
               git checkout "$DEFAULT_BRANCH"
               continue
-            fi
-            
-            # Restore semver prefix if it was present (deno add removes it)
-            if [[ -n "$SEMVER_PREFIX" ]] && [[ -f "deno.json" ]]; then
-              # Replace the version in deno.json to include the semver prefix
-              TEMP_FILE=$(mktemp)
-              jq ".imports[\"$PACKAGE\"] = (.imports[\"$PACKAGE\"] | sub(\"@([0-9])\"; \"@${SEMVER_PREFIX}\\1\"))" deno.json > "$TEMP_FILE" && mv "$TEMP_FILE" deno.json
-              echo "  ✓ Restored semver prefix '$SEMVER_PREFIX'"
             fi
             
             # Check if anything changed
@@ -228,13 +208,13 @@ runs:
             echo "  ✓ Updated $PACKAGE"
             
             # Commit and push
-            COMMIT_MSG="Bump $PACKAGE from $CURRENT to $LATEST"
+            COMMIT_MSG="Bump $PACKAGE from $CURRENT to $TARGET"
             git add .
             git commit -m "$COMMIT_MSG"
             git push -f origin "$BRANCH_NAME"
             
             # Create or update PR
-            PR_BODY="Bumps \`$PACKAGE\` from $CURRENT to $LATEST.
+            PR_BODY="Bumps \`$PACKAGE\` from $CURRENT to $TARGET.
             
             **Update type:** $UPDATE_TYPE
             
@@ -244,7 +224,7 @@ runs:
             if [[ -n "$EXISTING_PR" ]]; then
               echo "  ✓ Updated PR #$EXISTING_PR"
               gh pr edit "$EXISTING_PR" --title "$COMMIT_MSG" --body "$PR_BODY"
-              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})" >> "$SUMMARY_FILE"
+              echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${TARGET}\` (_${UPDATE_TYPE}_) - Updated PR [#${EXISTING_PR}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${EXISTING_PR})" >> "$SUMMARY_FILE"
             else
               # Build label arguments and ensure labels exist
               LABELS_ARG=""
@@ -280,10 +260,10 @@ runs:
               
               if [[ "$DRY_RUN" == "true" ]]; then
                 echo "  ✓ Would create PR (dry-run)"
-                echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Would create PR (dry-run)" >> "$SUMMARY_FILE"
+                echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${TARGET}\` (_${UPDATE_TYPE}_) - Would create PR (dry-run)" >> "$SUMMARY_FILE"
               else
                 echo "  ✓ Created PR #$PR_NUMBER"
-                echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${LATEST}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" >> "$SUMMARY_FILE"
+                echo "- **${PACKAGE}**: \`${CURRENT}\` → \`${TARGET}\` (_${UPDATE_TYPE}_) - Created PR [#${PR_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER})" >> "$SUMMARY_FILE"
               fi
             fi
             
