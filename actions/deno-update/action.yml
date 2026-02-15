@@ -28,6 +28,10 @@ inputs:
     description: If true, checks workspace members recursively (--recursive flag)
     required: false
     default: 'false'
+  preserve-semver-prefix:
+    description: If true, preserves semver prefixes (^, ~) when updating versions
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -47,6 +51,7 @@ runs:
         PR_LABELS: ${{ inputs.pr-labels }}
         DRY_RUN: ${{ inputs.dry-run }}
         RECURSIVE: ${{ inputs.recursive }}
+        PRESERVE_SEMVER_PREFIX: ${{ inputs.preserve-semver-prefix }}
       run: | # shell
         set -e
         
@@ -183,11 +188,31 @@ runs:
             UPDATE_PACKAGE="${PACKAGE#*://}"  # Strip protocol:// if present
             [[ "$UPDATE_PACKAGE" == "$PACKAGE" ]] && UPDATE_PACKAGE="${PACKAGE#*:}"  # Otherwise strip prefix:
             
+            # Detect semver prefix from deno.json before update
+            SEMVER_PREFIX=""
+            if [[ "$PRESERVE_SEMVER_PREFIX" == "true" ]]; then
+              # Extract the version constraint from deno.json for this package
+              if [[ -f "deno.json" ]]; then
+                CURRENT_VERSION=$(jq -r ".imports[\"$PACKAGE\"]? // empty" deno.json 2>/dev/null || echo "")
+                if [[ "$CURRENT_VERSION" =~ @(\^|~) ]]; then
+                  SEMVER_PREFIX="${BASH_REMATCH[1]}"
+                fi
+              fi
+            fi
+            
             if ! deno update $DENO_FLAGS "$UPDATE_PACKAGE@$LATEST"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
               FAILED_UPDATES=$((FAILED_UPDATES + 1))
               git checkout "$DEFAULT_BRANCH"
               continue
+            fi
+            
+            # Restore semver prefix if it was present
+            if [[ -n "$SEMVER_PREFIX" ]] && [[ -f "deno.json" ]]; then
+              # Replace the version in deno.json to include the semver prefix
+              TEMP_FILE=$(mktemp)
+              jq ".imports[\"$PACKAGE\"] = (.imports[\"$PACKAGE\"] | sub(\"@([0-9])\"; \"@${SEMVER_PREFIX}\\1\"))" deno.json > "$TEMP_FILE" && mv "$TEMP_FILE" deno.json
+              echo "  ✓ Restored semver prefix '$SEMVER_PREFIX'"
             fi
             
             # Check if anything changed
