@@ -11,7 +11,7 @@ inputs:
   version-policy:
     description: Version update policy - "compatible" (respect semver), "latest" (all updates), or "patch" (patch only)
     required: false
-    default: compatible
+    default: latest
   working-directory:
     description: Optional directory to execute in
     required: false
@@ -196,18 +196,21 @@ runs:
                 CURRENT_VERSION=$(jq -r ".imports[\"$PACKAGE\"]? // empty" deno.json 2>/dev/null || echo "")
                 if [[ "$CURRENT_VERSION" =~ @(\^|~) ]]; then
                   SEMVER_PREFIX="${BASH_REMATCH[1]}"
+                  echo "  Detected semver prefix '$SEMVER_PREFIX'"
                 fi
               fi
             fi
             
-            if ! deno update $DENO_FLAGS "$UPDATE_PACKAGE@$LATEST"; then
+            # Use deno add instead of deno update to force the specific version
+            # This bypasses any semver constraints in deno.json
+            if ! deno add "$PACKAGE@$LATEST"; then
               echo "  ⚠ Could not update $PACKAGE - skipping"
               FAILED_UPDATES=$((FAILED_UPDATES + 1))
               git checkout "$DEFAULT_BRANCH"
               continue
             fi
             
-            # Restore semver prefix if it was present
+            # Restore semver prefix if it was present (deno add removes it)
             if [[ -n "$SEMVER_PREFIX" ]] && [[ -f "deno.json" ]]; then
               # Replace the version in deno.json to include the semver prefix
               TEMP_FILE=$(mktemp)

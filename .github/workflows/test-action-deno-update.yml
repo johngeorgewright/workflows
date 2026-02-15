@@ -2,7 +2,7 @@ name: Test Deno Update Action
 
 on:
   pull_request:
-    paths: [actions/deno-update/**]
+    paths: [actions/deno-update/**, test/actions/deno-update/**]
   workflow_dispatch:
 
 env:
